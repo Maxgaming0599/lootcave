@@ -1,11 +1,11 @@
 name: ♻️ 24/7 VPS with tmate + SSHx (Manual + Auto Restart)
 
 on:
-  workflow_dispatch:         # ✅ Manual run button
+  workflow_dispatch: {}
   schedule:
-    - cron: '0 */6 * * *'     # ✅ Auto-run every 6 hours
+    - cron: '0 */6 * * *'
   repository_dispatch:
-    types: [create-vps]       # ✅ API trigger support (optional)
+    types: [create-vps]
 
 jobs:
   vps:
