@@ -1,0 +1,72 @@
+name: 🌐 24/7 VPS with tmate + SSHx (Auto Restart + Init Setup)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'
+
+jobs:
+  vps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: ✅ Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 📁 Prepare All Folders
+        run: mkdir -p .backup links data scripts configs
+
+      - name: 🔄 Restore Previous tmate Session
+        run: |
+          if [ -f ".backup/tmate.sock.zip" ]; then
+            unzip .backup/tmate.sock.zip -d /tmp/
+          else
+            echo "No previous tmate session found"
+          fi
+
+      - name: 🔐 Start tmate (Persistent Session)
+        run: |
+          sudo apt update && sudo apt install -y tmate zip unzip curl
+          if [ ! -e /tmp/tmate.sock ]; then
+            echo "Starting new tmate session..."
+            tmate -S /tmp/tmate.sock new-session -d
+          fi
+
+          # Run initial setup commands
+          tmate -S /tmp/tmate.sock send-keys "sudo su" Enter
+          sleep 2
+          tmate -S /tmp/tmate.sock send-keys "cd /" Enter
+          tmate -S /tmp/tmate.sock send-keys "mkdir -p home/lootcave" Enter
+          tmate -S /tmp/tmate.sock send-keys "cd home/lootcave" Enter
+
+          # Show SSH and Web links
+          tmate -S /tmp/tmate.sock wait tmate-ready
+          SSH=$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}')
+          WEB=$(tmate -S /tmp/tmate.sock display -p '#{tmate_web}')
+
+          echo "$SSH" | tee links/tmate_ssh.txt
+          echo "$WEB" | tee links/tmate_web.txt
+
+      - name: 🌐 Start SSHx Session
+        run: |
+          curl -sSf https://sshx.io/get | sh -s run > links/sshx.txt 2>&1 &
+          sleep 10
+          grep -Eo 'sshx://[^\s]+' links/sshx.txt || echo "❌ SSHx link not found"
+
+      - name: 💾 Backup Session Data
+        run: |
+          zip -r .backup/tmate.sock.zip /tmp/tmate.sock || echo "tmate.sock zip failed"
+          zip -r .backup/full.zip . -x ".git/*" ".github/*" ".backup/*"
+
+      - name: 📤 Push Backup & Links
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "📦 Auto backup + links"
+          file_pattern: '.backup/*.zip links/*.txt'
+          push_options: '--force'
+
+      - name: 🕒 Keep VPS Alive for 6 Hours
+        run: |
+          echo "✅ VPS running. Will restart in 6 hours..."
+          sleep $((360 * 60))
