@@ -1,0 +1,62 @@
+name: ♻️ 24/7 VPS with tmate + SSHx
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 */6 * * *'
+
+jobs:
+  vps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: ✅ Start
+        run: echo "Triggered by ${{ github.event_name }}"
+
+      - name: 📁 Prepare folders
+        run: mkdir -p .backup links
+
+      - name: ⬇️ Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔐 Install & start tmate
+        run: |
+          sudo apt update && sudo apt install -y tmate zip unzip curl
+          
+          if [ -f ".backup/tmate.sock.zip" ]; then
+            unzip -o .backup/tmate.sock.zip -d /tmp/
+            echo "♻️ Reused previous tmate session"
+          else
+            tmate -S /tmp/tmate.sock new-session -d
+            echo "🆕 Started new tmate session"
+          fi
+
+          tmate -S /tmp/tmate.sock wait tmate-ready
+          tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}' | tee links/tmate_ssh.txt
+          tmate -S /tmp/tmate.sock display -p '#{tmate_web}' | tee links/tmate_web.txt
+
+      - name: 🌐 Start SSHx
+        run: |
+          curl -sSf https://sshx.io/get | sh -s run > links/sshx.txt 2>&1 || echo "❌ SSHx failed"
+          grep -Eo 'sshx://[^\s]+' links/sshx.txt || echo "⚠️ No SSHx link found"
+
+      - name: 💾 Save backup
+        run: |
+          if [ -e /tmp/tmate.sock ]; then
+            zip -r .backup/tmate.sock.zip /tmp/tmate.sock
+          else
+            echo "⚠️ No tmate.sock found"
+          fi
+
+      - name: 📤 Auto commit
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🔁 VPS session backup + SSH links"
+          file_pattern: ".backup/*.zip links/*.txt"
+          push_options: '--force'
+
+      - name: ⏳ Sleep 6h to keep alive
+        run: |
+          echo "🟢 VPS active - auto restart in 6 hours"
+          sleep 21600
