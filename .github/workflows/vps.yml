@@ -1,0 +1,40 @@
+name: ♻️ 24/7 VPS with tmate + SSHx (Stable)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'
+  repository_dispatch:
+    types: [create-vps]
+
+jobs:
+  vps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: ✅ Show Trigger
+        run: echo "Triggered by: ${{ github.event_name }}"
+
+      - name: 📁 Prepare Directories
+        run: mkdir -p .backup links data scripts configs
+
+      - name: ⬇️ Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: 🔄 Restore Previous tmate Session
+        run: |
+          if [ -f ".backup/tmate.sock.zip" ]; then
+            unzip -o .backup/tmate.sock.zip -d /tmp/
+            echo "✅ Restored previous tmate.sock"
+          else
+            echo "ℹ️ No previous tmate session to restore"
+          fi
+
+      - name: 🔐 Start tmate Session
+        run: |
+          sudo apt update && sudo apt install -y tmate zip unzip curl
+
+          if [ ! -e /tmp/tmate.sock ]; then
+            echo "🆕 Starting new tmate session..."
+            tm
