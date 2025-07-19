@@ -75,4 +75,4 @@ jobs:
       - name: ⏳ Keep VPS Alive for 6 Hours
         run: |
           echo "🟢 VPS running. Will auto-restart in 6h..."
-          sleep 21600  # 6 hours in seconds
+          sleep 21600
