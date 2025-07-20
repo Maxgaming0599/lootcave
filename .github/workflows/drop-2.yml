@@ -1,0 +1,68 @@
+name: ♻️ Auto VPS with Persistent SSH + Folder (5h59m cycle)
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '*/359 * * * *' # Every 5h59m (~359 minutes)
+
+jobs:
+  vps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: 📁 Setup folders
+        run: |
+          mkdir -p links .backup
+          mkdir -p /home/lootcave
+
+      - name: 🔄 Restore tmate + Home
+        run: |
+          if [ -f ".backup/tmate.sock.zip" ]; then
+            unzip -o .backup/tmate.sock.zip -d /tmp/
+            echo "✅ Restored tmate"
+          fi
+
+          if [ -f ".backup/home_backup.tar.gz" ]; then
+            sudo tar -xzf .backup/home_backup.tar.gz -C /
+            echo "✅ Restored /home/lootcave"
+          fi
+
+      - name: 🔐 Start tmate + save link
+        run: |
+          sudo apt update && sudo apt install -y tmate zip unzip curl tar
+          if [ ! -e /tmp/tmate.sock ]; then
+            tmate -S /tmp/tmate.sock new-session -d
+          fi
+
+          tmate -S /tmp/tmate.sock wait tmate-ready
+
+          tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}' | tee links/tmate_ssh.txt
+          tmate -S /tmp/tmate.sock display -p '#{tmate_web}' | tee links/tmate_web.txt
+
+      - name: 🌐 Start SSHx + log link
+        run: |
+          curl -sSf https://sshx.io/get | sh -s run > links/sshx.txt 2>&1 || echo "❌ SSHx failed"
+          grep -Eo 'sshx://[^\s]+' links/sshx.txt || echo "⚠️ No SSHx found"
+
+      - name: 🕒 Stay Online 5h59m
+        run: |
+          echo "🟢 VPS running. Auto-backup in 5h59m..."
+          sleep $((359 * 60))
+
+      - name: 🧼 Cleanup old backups
+        run: |
+          rm -f .backup/tmate.sock.zip
+          rm -f .backup/home_backup.tar.gz
+
+      - name: 💾 Create fresh backups
+        run: |
+          zip -q -r .backup/tmate.sock.zip /tmp/tmate.sock
+          sudo tar -czf .backup/home_backup.tar.gz /home/lootcave
+
+      - name: 📤 Push backup & links
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "♻️ Auto-backup: tmate + lootcave"
+          file_pattern: ".backup/*.zip .backup/*.tar.gz links/*.txt"
+          push_options: "--force"
