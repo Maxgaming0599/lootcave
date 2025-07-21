@@ -1,0 +1,85 @@
+name: ♻️ Manual 24/7 VPS with tmate + SSHx + Auto Backup @ 5h59m
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  vps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # GitHub max
+
+    steps:
+      - name: ✅ Show Trigger
+        run: echo "Manual start via GitHub UI"
+
+      - name: ⬇️ Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: 📁 Prepare Folders
+        run: mkdir -p .backup links lootcave /tmp
+
+      - name: 🔄 Restore lootcave (if backup exists)
+        run: |
+          if [ -f ".backup/lootcave_backup.tar.gz" ]; then
+            tar -xzf .backup/lootcave_backup.tar.gz
+            echo "✅ lootcave folder restored"
+          else
+            echo "ℹ️ No lootcave backup found"
+          fi
+
+      - name: 🔐 Install & Start tmate
+        run: |
+          sudo apt update && sudo apt install -y tmate zip unzip curl tar
+          
+          if [ -f ".backup/tmate.sock.zip" ]; then
+            unzip -o .backup/tmate.sock.zip -d /tmp/
+            echo "♻️ Reused tmate session"
+          else
+            tmate -S /tmp/tmate.sock new-session -d
+            echo "🆕 Started new tmate session"
+          fi
+
+          tmate -S /tmp/tmate.sock wait tmate-ready
+          tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}' | tee links/tmate_ssh.txt
+          tmate -S /tmp/tmate.sock display -p '#{tmate_web}' | tee links/tmate_web.txt
+
+      - name: 🌐 Start SSHx Session
+        run: |
+          curl -sSf https://sshx.io/get | sh -s run > links/sshx.txt 2>&1 || echo "❌ SSHx failed"
+          grep -Eo 'sshx://[^\s]+' links/sshx.txt || echo "⚠️ No SSHx link found"
+
+      - name: 🕒 Stay Alive for 5h 59m
+        run: |
+          echo "🟢 Session running. Will backup after 5h59m..."
+          sleep $((359 * 60))  # 359 minutes
+
+      - name: 💾 Create Backups Before Timeout
+        run: |
+          echo "💾 Creating backups 1 min before timeout..."
+          rm -f .backup/tmate.sock.zip .backup/lootcave_backup.tar.gz
+
+          if [ -e /tmp/tmate.sock ]; then
+            zip -r .backup/tmate.sock.zip /tmp/tmate.sock
+            echo "✅ tmate backup created"
+          else
+            echo "⚠️ No tmate.sock to save"
+          fi
+
+          if [ -d "lootcave" ]; then
+            tar -czf .backup/lootcave_backup.tar.gz lootcave
+            echo "✅ lootcave folder backed up"
+          else
+            echo "⚠️ lootcave folder missing"
+          fi
+
+      - name: 📤 Push Backups + Links to Repo
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "♻️ Auto-backup before timeout"
+          file_pattern: ".backup/* links/*"
+          push_options: "--force"
+
+      - name: ✅ Wait Final Seconds
+        run: |
+          echo "✅ Backup done. Waiting last 30s before timeout..."
+          sleep 30
